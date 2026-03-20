@@ -5,49 +5,48 @@ addEventListener('fetch', event => {
 async function handleRequest(req) {
   const url = new URL(req.url)
 
-  // ✅ AUDIO PROXY (FIXED)
+  // ✅ AUDIO PROXY (fully correct)
   if (url.searchParams.has('audio')) {
     const audioUrl = url.searchParams.get('audio')
-
     const audioRes = await fetch(audioUrl)
 
     return new Response(audioRes.body, {
       headers: {
-        "Content-Type": "audio/mpeg",
+        "Content-Type": audioRes.headers.get("Content-Type") || "audio/mpeg",
         "Access-Control-Allow-Origin": "*",
         "Accept-Ranges": "bytes"
       }
     })
   }
 
-  // ✅ FETCH RSS
   const feedUrl = "https://media.rss.com/last-christian-ministries/feed.xml"
   const res = await fetch(feedUrl)
   const text = await res.text()
 
-  // ✅ PARSE ITEMS (IMPROVED)
   const items = [...text.matchAll(/<item>([\s\S]*?)<\/item>/g)].map(match => {
     const item = match[1]
 
-    const getTag = (tag) => {
-      const m = item.match(new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`))
-      return m ? m[1].replace(/<!\[CDATA\[|\]\]>/g, '').trim() : ""
+    const clean = (str) =>
+      str ? str.replace(/<!\[CDATA\[|\]\]>/g, '').trim() : ""
+
+    const get = (regex) => {
+      const m = item.match(regex)
+      return clean(m ? m[1] : "")
     }
 
-    const title = getTag("title")
-    const description = getTag("description")
-    const pubDate = getTag("pubDate")
+    const title = get(/<title>([\s\S]*?)<\/title>/)
+    const description = get(/<description>([\s\S]*?)<\/description>/)
+    const pubDate = get(/<pubDate>([\s\S]*?)<\/pubDate>/)
 
-    const audio = (item.match(/<enclosure[^>]*url="([^"]+)"/) || [])[1] || ""
+    const audio = get(/<enclosure[^>]*url="([^"]+)"/)
 
     const thumbnail =
-      (item.match(/itunes:image[^>]*href="([^"]+)"/) || [])[1] ||
-      ""
+      get(/<itunes:image[^>]*href="([^"]+)"/) ||
+      get(/<media:thumbnail[^>]*url="([^"]+)"/)
 
     return { title, description, audio, pubDate, thumbnail }
   })
 
-  // ✅ RETURN JSON WITH CORS
   return new Response(JSON.stringify({ items }), {
     headers: {
       "Content-Type": "application/json",
