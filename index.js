@@ -5,7 +5,7 @@ addEventListener('fetch', event => {
 async function handleRequest(req) {
   const url = new URL(req.url)
 
-  // ✅ AUDIO PROXY (fully working)
+  // ✅ AUDIO PROXY
   if (url.searchParams.has('audio')) {
     const audioUrl = url.searchParams.get('audio')
     const audioRes = await fetch(audioUrl)
@@ -36,21 +36,26 @@ async function handleRequest(req) {
 
     const title = get(/<title>([\s\S]*?)<\/title>/)
 
-    // ✅ FIX: use content:encoded FIRST, fallback to description
+    // ✅ RSS.com uses content:encoded (this is the key fix)
     const description =
       get(/<content:encoded>([\s\S]*?)<\/content:encoded>/) ||
       get(/<description>([\s\S]*?)<\/description>/)
 
     const pubDate = get(/<pubDate>([\s\S]*?)<\/pubDate>/)
 
-    // ✅ FIX: enclosure extraction
-    const audioMatch = item.match(/<enclosure[^>]+url="([^"]+)"/)
-    const audio = audioMatch ? audioMatch[1] : ""
+    // ✅ FIXED enclosure parsing (this was breaking audio)
+    let audio = ""
+    const enclosureMatch = item.match(/<enclosure\s+[^>]*url="([^"]+)"/)
+    if (enclosureMatch) {
+      audio = enclosureMatch[1]
+    }
 
-    // ✅ FIX: thumbnail fallback options
-    const thumbnail =
-      get(/itunes:image[^>]+href="([^"]+)"/) ||
-      get(/media:thumbnail[^>]+url="([^"]+)"/)
+    // ✅ Thumbnail (RSS.com uses itunes:image at channel level sometimes)
+    let thumbnail = ""
+    const thumbMatch = item.match(/<itunes:image[^>]+href="([^"]+)"/)
+    if (thumbMatch) {
+      thumbnail = thumbMatch[1]
+    }
 
     return { title, description, audio, pubDate, thumbnail }
   })
