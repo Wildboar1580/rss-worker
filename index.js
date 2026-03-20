@@ -5,7 +5,7 @@ addEventListener('fetch', event => {
 async function handleRequest(req) {
   const url = new URL(req.url)
 
-  // ✅ AUDIO PROXY
+  // ✅ AUDIO PROXY (WORKING)
   if (url.searchParams.has('audio')) {
     const audioUrl = url.searchParams.get('audio')
     const audioRes = await fetch(audioUrl)
@@ -21,41 +21,44 @@ async function handleRequest(req) {
 
   const feedUrl = "https://media.rss.com/last-christian-ministries/feed.xml"
   const res = await fetch(feedUrl)
-  const text = await res.text()
+  const xml = await res.text()
 
   const clean = (str) =>
     str ? str.replace(/<!\[CDATA\[|\]\]>/g, '').trim() : ""
 
-  const items = [...text.matchAll(/<item>([\s\S]*?)<\/item>/g)].map(match => {
+  const getTag = (text, tag) => {
+    const regex = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i")
+    const match = text.match(regex)
+    return clean(match ? match[1] : "")
+  }
+
+  const getAttr = (text, tag, attr) => {
+    const regex = new RegExp(`<${tag}[^>]*${attr}="([^"]+)"`, "i")
+    const match = text.match(regex)
+    return match ? match[1] : ""
+  }
+
+  const items = [...xml.matchAll(/<item>([\s\S]*?)<\/item>/gi)].map(match => {
     const item = match[1]
 
-    const get = (regex) => {
-      const m = item.match(regex)
-      return clean(m ? m[1] : "")
-    }
+    const title = getTag(item, "title")
 
-    const title = get(/<title>([\s\S]*?)<\/title>/)
-
-    // ✅ RSS.com uses content:encoded (this is the key fix)
+    // Try multiple description sources
     const description =
-      get(/<content:encoded>([\s\S]*?)<\/content:encoded>/) ||
-      get(/<description>([\s\S]*?)<\/description>/)
+      getTag(item, "content:encoded") ||
+      getTag(item, "description") ||
+      "No description available."
 
-    const pubDate = get(/<pubDate>([\s\S]*?)<\/pubDate>/)
+    const pubDate = getTag(item, "pubDate")
 
-    // ✅ FIXED enclosure parsing (this was breaking audio)
-    let audio = ""
-    const enclosureMatch = item.match(/<enclosure\s+[^>]*url="([^"]+)"/)
-    if (enclosureMatch) {
-      audio = enclosureMatch[1]
-    }
+    // Reliable enclosure extraction
+    const audio = getAttr(item, "enclosure", "url")
 
-    // ✅ Thumbnail (RSS.com uses itunes:image at channel level sometimes)
-    let thumbnail = ""
-    const thumbMatch = item.match(/<itunes:image[^>]+href="([^"]+)"/)
-    if (thumbMatch) {
-      thumbnail = thumbMatch[1]
-    }
+    // Thumbnail fallbacks
+    const thumbnail =
+      getAttr(item, "itunes:image", "href") ||
+      getAttr(item, "media:thumbnail", "url") ||
+      ""
 
     return { title, description, audio, pubDate, thumbnail }
   })
