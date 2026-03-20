@@ -5,7 +5,7 @@ addEventListener('fetch', event => {
 async function handleRequest(req) {
   const url = new URL(req.url)
 
-  // ✅ AUDIO PROXY (fully correct)
+  // ✅ AUDIO PROXY (fully working)
   if (url.searchParams.has('audio')) {
     const audioUrl = url.searchParams.get('audio')
     const audioRes = await fetch(audioUrl)
@@ -23,11 +23,11 @@ async function handleRequest(req) {
   const res = await fetch(feedUrl)
   const text = await res.text()
 
+  const clean = (str) =>
+    str ? str.replace(/<!\[CDATA\[|\]\]>/g, '').trim() : ""
+
   const items = [...text.matchAll(/<item>([\s\S]*?)<\/item>/g)].map(match => {
     const item = match[1]
-
-    const clean = (str) =>
-      str ? str.replace(/<!\[CDATA\[|\]\]>/g, '').trim() : ""
 
     const get = (regex) => {
       const m = item.match(regex)
@@ -35,14 +35,22 @@ async function handleRequest(req) {
     }
 
     const title = get(/<title>([\s\S]*?)<\/title>/)
-    const description = get(/<description>([\s\S]*?)<\/description>/)
+
+    // ✅ FIX: use content:encoded FIRST, fallback to description
+    const description =
+      get(/<content:encoded>([\s\S]*?)<\/content:encoded>/) ||
+      get(/<description>([\s\S]*?)<\/description>/)
+
     const pubDate = get(/<pubDate>([\s\S]*?)<\/pubDate>/)
 
-    const audio = get(/<enclosure[^>]*url="([^"]+)"/)
+    // ✅ FIX: enclosure extraction
+    const audioMatch = item.match(/<enclosure[^>]+url="([^"]+)"/)
+    const audio = audioMatch ? audioMatch[1] : ""
 
+    // ✅ FIX: thumbnail fallback options
     const thumbnail =
-      get(/<itunes:image[^>]*href="([^"]+)"/) ||
-      get(/<media:thumbnail[^>]*url="([^"]+)"/)
+      get(/itunes:image[^>]+href="([^"]+)"/) ||
+      get(/media:thumbnail[^>]+url="([^"]+)"/)
 
     return { title, description, audio, pubDate, thumbnail }
   })
